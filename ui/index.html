@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>dsweb-proxy 控制台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f5f7fa; color: #1a2233;
+    padding: 22px 24px; user-select: none; font-size: 14px;
+  }
+  h1 { font-size: 17px; font-weight: 600; }
+  .sub { color: #6b7688; font-size: 12px; margin: 2px 0 14px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab {
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    background: #e9edf3; color: #4b5568; border: 1px solid transparent;
+  }
+  .tab.on { background: #fff; color: #1d4ed8; border-color: #c7d7f5; font-weight: 600; }
+  .card {
+    background: #fff; border: 1px solid #e3e8ef; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #e5484d; flex: none; }
+  .dot.ok { background: #30a46c; }
+  button {
+    background: #2563eb; color: #fff; border: 0; border-radius: 7px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  button.ghost { background: #eef2f7; color: #1a2233; }
+  button.ghost:hover { background: #e2e8f0; }
+  button.danger { background: #fee2e2; color: #b91c1c; }
+  button.mini { padding: 3px 10px; font-size: 12px; }
+  .url { font-family: Consolas, monospace; color: #1d4ed8; font-size: 13px; }
+  .muted { color: #6b7688; font-size: 12px; line-height: 1.65; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #6b7688; font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid #e3e8ef; }
+  td { padding: 7px 8px; border-bottom: 1px solid #f0f3f7; }
+  tr.active { background: #eff6ff; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; }
+  .badge.ok { background: #dcfce7; color: #15803d; }
+  .badge.limited { background: #fee2e2; color: #b91c1c; }
+  .badge.unknown { background: #f1f5f9; color: #64748b; }
+  #log { margin-top: 8px; font-size: 12px; color: #1d4ed8; min-height: 16px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; cursor: pointer; }
+  .grow { flex: 1; }
+  code { background: #f1f5f9; border-radius: 4px; padding: 0 4px; }
+  .field { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+  .field label:first-child { width: 90px; color: #4b5568; flex: none; }
+  input[type=text], input[type=number] {
+    border: 1px solid #d6dde8; border-radius: 7px; padding: 5px 9px; font-size: 13px;
+    background: #fff; color: #1a2233; font-family: inherit;
+  }
+  input[type=text] { width: 260px; }
+  input[type=number] { width: 110px; }
+  select { border: 1px solid #d6dde8; border-radius: 6px; padding: 3px 6px; font-size: 12px; background: #fff; }
+  .hint { color: #8892a4; font-size: 11px; }
+  .group-head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-top: 6px;
+    background: #f7f9fc; border-radius: 7px; font-size: 12px; color: #4b5568; cursor: pointer;
+  }
+  .group-head strong { color: #1a2233; font-size: 13px; }
+  .group-head .count { color: #8892a4; }
+  .chev { width: 12px; display: inline-block; color: #8892a4; }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    background: #eef2f7; color: #4b5568; cursor: pointer;
+  }
+  .tag:hover { background: #e2e8f0; }
+  details > summary { cursor: pointer; font-size: 13px; font-weight: 600; outline: none; }
+  details[open] > summary { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+  <h1>dsweb-proxy</h1>
+  <div class="sub">网页版 → OpenAI 兼容反代 · 每家厂商独立账号库 · 遇限流/封号自动轮转</div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab on" data-p="deepseek-web">DeepSeek</div>
+    <div class="tab" data-p="qwen-web">通义千问</div>
+    <div class="tab" data-p="doubao-web">豆包</div>
+  </div>
+
+  <!-- 服务地址（全局） -->
+  <div class="card">
+    <div class="row">
+      <div class="grow">
+        <div class="url" id="base-url">http://127.0.0.1:8787/v1</div>
+        <div class="muted">ZCode 按模型名自动路由：<code>deepseek-*</code> → DeepSeek 网页 · <code>qwen*</code> → 千问网页 · <code>doubao-*</code> → 豆包网页</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 服务设置 -->
+  <details class="card">
+    <summary>服务设置（启动开关 / 端口 / API key / 轮转）</summary>
+    <div class="field">
+      <label>启动反代</label>
+      <label class="switch"><input type="checkbox" id="cfg-enabled" /> 应用启动时自动运行服务</label>
+      <span class="hint">关闭后壳不再自动拉起（保存并重启服务后生效）</span>
+    </div>
+    <div class="field">
+      <label>监听端口</label>
+      <input type="number" id="cfg-port" min="1024" max="65535" />
+      <span class="hint">1024~65535；改动需「重启服务」</span>
+    </div>
+    <div class="field">
+      <label>API key</label>
+      <input type="text" id="cfg-apikey" placeholder="" />
+      <button class="mini ghost" id="btn-clearkey">清除</button>
+      <span class="hint">设置后 /v1/* 需要 Bearer 校验；ZCode 的 apiKey 要与此一致</span>
+    </div>
+    <div class="field">
+      <label>轮转</label>
+      <label class="switch"><input type="checkbox" id="cfg-rotation" /> 限流/封号自动轮转账号</label>
+      <span class="hint">普通频控只退避重试，不切号；改完保存即生效</span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btn-save-cfg">保存设置</button>
+      <button class="ghost" id="btn-restart">重启服务</button>
+      <span class="muted" id="cfg-hint"></span>
+    </div>
+  </details>
+
+  <!-- 当前 provider 的登录状态与操作 -->
+  <div class="card">
+    <div class="row">
+      <div class="dot" id="dot"></div>
+      <div class="grow">
+        <div id="status-text">检查中……</div>
+        <div class="muted" id="status-detail"></div>
+      </div>
+      <button id="btn-login">登录新账号</button>
+      <button class="ghost" id="btn-verify">校验全部</button>
+    </div>
+  </div>
+
+  <!-- 模型列表 -->
+  <div class="card">
+    <div class="muted" style="margin-bottom:6px">可用模型（登录后以网页端实际目录为准）</div>
+    <div id="models" class="muted">加载中……</div>
+  </div>
+
+  <!-- 账号库 -->
+  <div class="card">
+    <div class="toolbar">
+      <strong style="font-size:13px">账号库</strong>
+      <span class="muted" id="account-count"></span>
+      <span class="grow"></span>
+      <button class="mini ghost" id="btn-newgroup">新建分组</button>
+      <span class="muted">分组只影响显示；切号与轮转不看分组</span>
+    </div>
+    <div id="accounts-body"><div class="muted">加载中……</div></div>
+  </div>
+
+  <div id="log"></div>
+
+<script>
+  let BASE = 'http://127.0.0.1:8787';
+  const $ = (id) => document.getElementById(id);
+  let currentProvider = 'deepseek-web';
+  const DIR_BY_PROVIDER = { 'deepseek-web': 'deepseek', 'qwen-web': 'qwen', 'doubao-web': 'doubao' };
+  const PROVIDER_NAME = { 'deepseek-web': 'DeepSeek', 'qwen-web': '通义千问', 'doubao-web': '豆包' };
+  const dir = () => DIR_BY_PROVIDER[currentProvider];
+  let collapsed = JSON.parse(localStorage.getItem('dsweb.collapsed') || '{}');
+
+  function fmtRemaining(ms) {
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    if (hours >= 24) return `${Math.floor(hours / 24)} 天 ${hours % 24} 小时`;
+    return hours > 0 ? `${hours} 小时 ${minutes} 分` : `${minutes} 分钟`;
+  }
+  function esc(text) {
+    return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function log(text) { $('log').textContent = text; }
+
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.addEventListener('click', () => {
+      for (const t of document.querySelectorAll('.tab')) t.classList.remove('on');
+      tab.classList.add('on');
+      currentProvider = tab.dataset.p;
+      refreshAll();
+    });
+  }
+
+  async function refreshStatus() {
+    try {
+      const data = await (await fetch(BASE + '/admin/status')).json();
+      const st = data.providers[currentProvider];
+      if (st?.loggedIn) {
+        $('dot').classList.add('ok');
+        $('status-text').textContent = `${PROVIDER_NAME[currentProvider]} · 当前账号：` + (st.display || '已登录');
+        $('status-detail').textContent = st.detail || '';
+      } else {
+        $('dot').classList.remove('ok');
+        $('status-text').textContent = `${PROVIDER_NAME[currentProvider]} · 未登录`;
+        $('status-detail').textContent = st?.detail || '';
+      }
+    } catch {
+      $('dot').classList.remove('ok');
+      $('status-text').textContent = '服务未响应（可能已关闭「启动反代」，或端口已改）';
+      $('status-detail').textContent = '';
+    }
+  }
+
+  async function refreshModels() {
+    try {
+      const data = await (await fetch(BASE + '/v1/models')).json();
+      const mine = data.data.filter((m) => m.owned_by === currentProvider);
+      $('models').innerHTML = mine.map((m) => `<code>${esc(m.id)}</code>`).join(' · ') || '（无）';
+    } catch { $('models').textContent = '（服务未响应）'; }
+  }
+
+  async function refreshAccounts() {
+    try {
+      const [groupData, accountData] = await Promise.all([
+        (await fetch(`${BASE}/admin/groups?provider=${dir()}`)).json(),
+        (await fetch(`${BASE}/admin/accounts?provider=${dir()}`)).json(),
+      ]);
+      const byId = Object.fromEntries((accountData.accounts || []).map((a) => [a.id, a]));
+      const groups = groupData.groups || [];
+      const sections = groupData.sections || [];
+      const total = (accountData.accounts || []).length;
+      $('account-count').textContent = total ? `${total} 个账号 · ${groups.length} 个分组` : '（空）';
+
+      if (!total && !groups.length) {
+        $('accounts-body').innerHTML = `<div class="muted" style="padding:8px">还没有${PROVIDER_NAME[currentProvider]}账号 —— 点上方「登录新账号」添加</div>`;
+        return;
+      }
+
+      const groupOptions = (selected) =>
+        ['<option value="">未分组</option>']
+          .concat(groups.map((g) => `<option value="${g.id}" ${g.id === selected ? 'selected' : ''}>${esc(g.name)}</option>`))
+          .join('');
+
+      const rowHtml = (account) => {
+        const a = byId[account.id];
+        if (!a) return '';
+        const badge = a.active
+          ? '<span class="badge ok">使用中</span>'
+          : a.limit
+            ? '<span class="badge limited">受限中</span>'
+            : '<span class="badge unknown">空闲</span>';
+        const limitCell = a.limit ? `还有 <strong>${fmtRemaining(a.limit.remainingMs)}</strong>` : '—';
+        const verified = a.lastVerifiedAt ? new Date(a.lastVerifiedAt).toLocaleString('zh-CN', { hour12: false }) : '未校验';
+        return `<tr class="${a.active ? 'active' : ''}">
+          <td title="${esc(a.id)}">${esc(a.label || a.display)}</td>
+          <td>${badge}</td>
+          <td>${limitCell}</td>
+          <td class="muted">${verified}</td>
+          <td><select onchange="setGroup('${a.id}', this.value)">${groupOptions(a.groupId || '')}</select></td>
+          <td style="white-space:nowrap">
+            ${a.active ? '' : `<button class="mini ghost" onclick="switchTo('${a.id}')">切换</button>`}
+            <button class="mini danger" onclick="removeAccount('${a.id}', this)">删除</button>
+          </td>
+        </tr>`;
+      };
+
+      let bodyHtml = '';
+      for (const section of sections) {
+        const key = `${currentProvider}:${section.key}`;
+        const isCollapsed = collapsed[key] === true;
+        bodyHtml += `<div class="group-head" onclick="toggleGroup('${key}')">
+            <span class="chev">${isCollapsed ? '▶' : '▼'}</span>
+            <strong>${esc(section.name)}</strong>
+            <span class="count">${section.accounts.length} 个</span>
+            <span style="flex:1"></span>
+            ${section.groupId ? `<span class="tag" onclick="event.stopPropagation();renameGroup('${section.groupId}')">改名</span>
+              <span class="tag" onclick="event.stopPropagation();deleteGroup('${section.groupId}')">删组</span>` : ''}
+          </div>`;
+        if (!isCollapsed) {
+          bodyHtml += `<table><tbody>${section.accounts.map(rowHtml).join('')}</tbody></table>`;
+        }
+      }
+      $('accounts-body').innerHTML = bodyHtml;
+    } catch {
+      $('accounts-body').innerHTML = '<div class="muted">账号库读取失败（服务未运行）</div>';
+    }
+  }
+
+  window.toggleGroup = (key) => {
+    collapsed[key] = !collapsed[key];
+    localStorage.setItem('dsweb.collapsed', JSON.stringify(collapsed));
+    refreshAccounts();
+  };
+  window.setGroup = async (id, groupId) => {
+    await fetch(BASE + '/admin/accounts/group', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, groupId, provider: dir() }),
+    });
+    refreshAccounts();
+  };
+  window.switchTo = async (id) => {
+    await fetch(BASE + '/admin/accounts/switch', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, provider: dir() }),
+    });
+    refreshAll();
+  };
+  window.removeAccount = async (id, btn) => {
+    if (!confirm('确定删除这个账号？凭证文件会被移除（建议先导出备份）。')) return;
+    btn.disabled = true;
+    await fetch(BASE + '/admin/accounts/remove', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, provider: dir() }),
+    });
+    refreshAll();
+  };
+  window.renameGroup = async (id) => {
+    const name = prompt('新的分组名（最多 20 字）：');
+    if (!name) return;
+    const res = await (await fetch(BASE + '/admin/groups/rename', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, name, provider: dir() }),
+    })).json();
+    if (!res.ok) log('改名失败：' + res.message);
+    refreshAccounts();
+  };
+  window.deleteGroup = async (id) => {
+    if (!confirm('删除这个分组？账号不会被删除，只会落回「未分组」。')) return;
+    await fetch(BASE + '/admin/groups/remove', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, provider: dir() }),
+    });
+    refreshAccounts();
+  };
+
+  $('btn-newgroup').addEventListener('click', async () => {
+    const name = prompt('新分组名（最多 20 字，最多 12 个组）：');
+    if (!name) return;
+    const res = await (await fetch(BASE + '/admin/groups/create', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, provider: dir() }),
+    })).json();
+    if (!res.ok) log('新建分组失败：' + res.message);
+    refreshAccounts();
+  });
+
+  $('btn-login').addEventListener('click', async () => {
+    log(`正在拉起浏览器登录${PROVIDER_NAME[currentProvider]}（新账号入库，不影响当前账号）……`);
+    try {
+      const res = await (await fetch(BASE + '/admin/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: currentProvider }),
+      })).json();
+      log(res.message || JSON.stringify(res));
+      setTimeout(refreshAll, 8000);
+    } catch (e) { log('失败：' + e); }
+  });
+
+  $('btn-verify').addEventListener('click', async () => {
+    log('校验全部账号中（只读探活，零额度，串行执行）……');
+    try {
+      const res = await (await fetch(`${BASE}/admin/accounts/verify?provider=${dir()}`, { method: 'POST' })).json();
+      const okCount = (res.results || []).filter((r) => r.ok).length;
+      log(`校验完成：${okCount}/${res.results.length} 可用`);
+      refreshAll();
+    } catch (e) { log('失败：' + e); }
+  });
+
+  // ── 服务设置 ──
+  async function loadConfig() {
+    try {
+      const cfg = await (await fetch(BASE + '/admin/config')).json();
+      BASE = `http://127.0.0.1:${cfg.runningPort}`;
+      $('base-url').textContent = `${BASE}/v1`;
+      $('cfg-enabled').checked = cfg.enabled !== false;
+      $('cfg-rotation').checked = cfg.rotation !== false;
+      $('cfg-port').value = cfg.port ?? 8787;
+      if (document.activeElement !== $('cfg-apikey')) {
+        $('cfg-apikey').value = '';
+        $('cfg-apikey').placeholder = cfg.apiKeySet ? `已设置（${cfg.apiKey}）—— 输入新值可更换` : '留空 = 不校验（仅本机时可留空）';
+      }
+      $('cfg-hint').textContent = `当前运行：${cfg.runningHost}:${cfg.runningPort}`;
+    } catch { $('cfg-hint').textContent = '（服务未响应）'; }
+  }
+
+  $('btn-save-cfg').addEventListener('click', async () => {
+    const apiKeyRaw = $('cfg-apikey').value.trim();
+    const payload = {
+      enabled: $('cfg-enabled').checked,
+      rotation: $('cfg-rotation').checked,
+      port: Number($('cfg-port').value),
+      ...(apiKeyRaw && !apiKeyRaw.startsWith('****') ? { apiKey: apiKeyRaw } : {}),
+    };
+    try {
+      const res = await (await fetch(BASE + '/admin/config', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })).json();
+      if (res.error) { log('保存失败：' + res.error.message); return; }
+      log(res.needsRestart ? '设置已保存 —— 端口变了，需点「重启服务」生效' : '设置已保存（立即生效）');
+      loadConfig();
+    } catch (e) { log('保存失败：' + e); }
+  });
+
+  $('btn-clearkey').addEventListener('click', async () => {
+    if (!confirm('清除 API key 门禁？（任何本机程序都能直接调用）')) return;
+    try {
+      await fetch(BASE + '/admin/config', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ apiKey: '' }),
+      });
+      log('API key 已清除（立即生效）');
+      loadConfig();
+    } catch (e) { log('失败：' + e); }
+  });
+
+  $('btn-restart').addEventListener('click', async () => {
+    log('正在请求重启服务……');
+    try {
+      if (!window.__TAURI__) { log('当前不在桌面壳里运行，请手动关闭再打开应用。'); return; }
+      await window.__TAURI__.core.invoke('restart_service');
+      log('服务已按新配置重启');
+      setTimeout(refreshAll, 1500);
+    } catch (e) { log('重启失败：' + e); }
+  });
+
+  function refreshAll() { loadConfig(); refreshStatus(); refreshModels(); refreshAccounts(); }
+  refreshAll();
+  setInterval(() => { refreshStatus(); refreshAccounts(); }, 10000);
+</script>
+</body>
+</html>

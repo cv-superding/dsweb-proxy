@@ -1,0 +1,16 @@
+# 构建产物
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+# SEA 单文件 exe（90MB，超 GitHub 限制，构建脚本本地产出）
+src-tauri/binaries/*.exe
+*.blob
+# 运行时/日志
+*.log
+.tmp-*/
+*.tmp-*
+# 本机环境（绝不入库）
+.env
+.DS_Store
+Thumbs.db

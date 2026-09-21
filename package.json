@@ -1,0 +1,25 @@
+{
+  "name": "dsweb-proxy",
+  "version": "0.1.0",
+  "description": "OpenAI-compatible local reverse proxy for chat.deepseek.com web login (multi-provider: deepseek first, douban/qwen/chatgpt reserved)",
+  "private": true,
+  "type": "module",
+  "main": "./dist/cli.js",
+  "bin": {
+    "dsweb-proxy": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node --experimental-strip-types src/cli.ts serve",
+    "test": "node tests/run-all.mjs"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "esbuild": "^0.28.2",
+    "tsdown": "0.22.14",
+    "typescript": "5.9.3"
+  }
+}

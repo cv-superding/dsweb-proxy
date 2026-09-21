@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "dsweb-proxy",
+  "version": "0.1.0",
+  "identifier": "com.dsweb.proxy",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "dsweb-proxy 控制台",
+        "width": 760,
+        "height": 560,
+        "resizable": true,
+        "visible": true,
+        "url": "index.html"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/dsweb-proxy-node"
+    ],
+    "resources": []
+  }
+}

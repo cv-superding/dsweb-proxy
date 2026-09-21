@@ -1,0 +1,26 @@
+dsweb-proxy NOTICE
+===================
+
+This project includes code derived from:
+
+  * dsh-deepseek-web-login (https://github.com/cv-superding/dsh-deepseek-web-login)
+    Licensed under the Apache License, Version 2.0.
+    Core protocol implementation (PoW solving, SSE patch-stream parsing,
+    prompt-based tool-call protocol, session hygiene, throttling gate) was
+    ported and adapted for an OpenAI-compatible local reverse proxy.
+
+Protocol intelligence referenced from public projects (source not included):
+
+  * LLM-Red-Team/deepseek-free-api
+  * Fly143/deepseek-free-api
+  * ForgetMeAI/FreeDeepseekAPI
+  * Rfym21/Qwen2API (Qwen web protocol research)
+  * Bitsea1/doubao-free-api, SeiShonagon520/doubao2api, 5201213/doubao-free-api
+    (Doubao web protocol research)
+
+"DeepSeek", "通义千问 / Qwen" and "豆包 / Doubao" are trademarks of their
+respective owners. This project is not affiliated with, endorsed by, or
+sponsored by any of them. It calls the private web endpoints of
+chat.deepseek.com / chat.qwen.ai / www.doubao.com using the user's own
+logged-in browser session, which may violate those services' terms of use.
+Use at your own risk.
