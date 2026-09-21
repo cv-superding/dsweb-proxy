@@ -28,6 +28,31 @@ ZCode agent loop ──▶ http://127.0.0.1:8787/v1/chat/completions
 多厂商预留：`src/registry.ts` 里注册一行即可接入新厂商（豆包 / 千问 / ChatGPT），
 每个厂商只需实现 `src/provider-types.ts` 的 `WebProxyProvider` 接口。
 
+## 架构
+
+整体组件拓扑（本机桌面壳 + sidecar 核心 + 三家 Provider + 网页端）：
+
+<p align="center">
+  <img src="docs/assets/architecture.png" alt="dsweb-proxy 架构图" width="100%">
+</p>
+
+一次对话请求的完整生命周期（以 DeepSeek 路由为例：过闸 → 临时会话 + PoW → SSE 流式 → 攒批清理）：
+
+<p align="center">
+  <img src="docs/assets/sequence.png" alt="dsweb-proxy 请求生命周期时序图" width="100%">
+</p>
+
+两张图的可交互版本（主题切换 / 缩放 / 关系追踪）在
+[`docs/diagrams/`](docs/diagrams/)：`architecture-dsweb-proxy.html` 与 `sequence-dsweb-proxy.html`，本地打开即可浏览。
+
+## 界面预览
+
+控制台：三标签页（DeepSeek / 通义千问 / 豆包），每页独立的登录状态、模型目录与账号库（分组 / 受限倒计时 / 切换 / 校验）；「服务设置」里可改端口、API key 门禁与轮转开关。
+
+<p align="center">
+  <img src="docs/assets/screenshot-console.png" alt="dsweb-proxy 控制台截图" width="720">
+</p>
+
 ## 快速开始
 
 ### 1. 启动

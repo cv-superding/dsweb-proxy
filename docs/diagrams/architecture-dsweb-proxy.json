@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dsweb-proxy 架构",
+    "output": "architecture-dsweb-proxy.html",
+    "quality_profile": "showcase",
+    "locale": "zh-CN"
+  },
+  "components": [
+    {
+      "id": "zcode",
+      "type": "external",
+      "label": "ZCode / OpenAI 客户端",
+      "sublabel": "任意 OpenAI SDK",
+      "pos": [
+        20,
+        330
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "Tauri 桌面壳",
+      "sublabel": "托盘 + 控制台窗口",
+      "pos": [
+        40,
+        110
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "OpenAI 兼容服务",
+      "sublabel": "Node SEA sidecar · /v1 :8787",
+      "pos": [
+        380,
+        310
+      ],
+      "size": [
+        210,
+        84
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "防风控闸门",
+      "sublabel": "串行 · 随机间隔 · 轮转",
+      "pos": [
+        640,
+        620
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "accounts",
+      "type": "database",
+      "label": "账号库",
+      "sublabel": "凭证 · 分组 · 受限时间",
+      "pos": [
+        340,
+        620
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "login",
+      "type": "backend",
+      "label": "CDP 登录捕获",
+      "sublabel": "拉起真实浏览器",
+      "pos": [
+        40,
+        620
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "p-ds",
+      "type": "backend",
+      "label": "DeepSeek Provider",
+      "sublabel": "PoW · SSE · 工具协议",
+      "pos": [
+        740,
+        120
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "p-qw",
+      "type": "backend",
+      "label": "Qwen Provider",
+      "sublabel": "phase 思考/正文分流",
+      "pos": [
+        740,
+        340
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "p-db",
+      "type": "backend",
+      "label": "Doubao Provider",
+      "sublabel": "samantha SSE 三层 JSON",
+      "pos": [
+        740,
+        520
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "web-ds",
+      "type": "cloud",
+      "label": "chat.deepseek.com",
+      "sublabel": "网页端私有接口",
+      "pos": [
+        1040,
+        120
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "web-qw",
+      "type": "cloud",
+      "label": "chat.qwen.ai",
+      "sublabel": "网页端私有接口",
+      "pos": [
+        1040,
+        340
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "web-db",
+      "type": "cloud",
+      "label": "www.doubao.com",
+      "sublabel": "网页端私有接口",
+      "pos": [
+        1040,
+        520
+      ],
+      "size": [
+        190,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "本机 Windows 桌面",
+      "wraps": [
+        "shell",
+        "server",
+        "gate",
+        "accounts",
+        "login",
+        "p-ds",
+        "p-qw",
+        "p-db"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "zcode-to-server",
+      "from": "zcode",
+      "to": "server",
+      "label": "POST /v1/chat/completions",
+      "variant": "emphasis",
+      "labelDy": 20
+    },
+    {
+      "id": "shell-to-server",
+      "from": "shell",
+      "to": "server",
+      "label": "启动 / 重启"
+    },
+    {
+      "id": "server-to-gate",
+      "from": "server",
+      "to": "gate",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "gate-to-accounts",
+      "from": "gate",
+      "to": "accounts",
+      "label": "落库 / 切号"
+    },
+    {
+      "id": "login-to-accounts",
+      "from": "login",
+      "to": "accounts",
+      "label": "捕获凭证入库"
+    },
+    {
+      "id": "server-to-p-ds",
+      "from": "server",
+      "to": "p-ds",
+      "label": "deepseek-*"
+    },
+    {
+      "id": "server-to-p-qw",
+      "from": "server",
+      "to": "p-qw",
+      "label": "qwen*"
+    },
+    {
+      "id": "server-to-p-db",
+      "from": "server",
+      "to": "p-db",
+      "label": "doubao-*"
+    },
+    {
+      "id": "p-ds-to-web",
+      "from": "p-ds",
+      "to": "web-ds",
+      "label": "SSE 会话 + PoW"
+    },
+    {
+      "id": "p-qw-to-web",
+      "from": "p-qw",
+      "to": "web-qw",
+      "label": "SSE 会话"
+    },
+    {
+      "id": "p-db-to-web",
+      "from": "p-db",
+      "to": "web-db",
+      "label": "SSE 会话"
+    }
+  ]
+}

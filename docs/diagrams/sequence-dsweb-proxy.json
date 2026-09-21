@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "dsweb-proxy 请求生命周期（DeepSeek 路由）",
+    "output": "sequence-dsweb-proxy.html",
+    "viewBox": [
+      1080,
+      570
+    ],
+    "quality_profile": "showcase",
+    "locale": "zh-CN"
+  },
+  "participants": [
+    {
+      "id": "zcode",
+      "type": "external",
+      "label": "ZCode 客户端",
+      "sublabel": "OpenAI SDK"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "OpenAI",
+      "sublabel": "兼容 /v1 :8787"
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "防风控闸门",
+      "sublabel": "串行 · 随机间隔"
+    },
+    {
+      "id": "accounts",
+      "type": "database",
+      "label": "账号库",
+      "sublabel": "凭证 · 受限时间"
+    },
+    {
+      "id": "provider",
+      "type": "backend",
+      "label": "DeepSeek",
+      "sublabel": "转写 · 工具协议"
+    },
+    {
+      "id": "web",
+      "type": "cloud",
+      "label": "网页端",
+      "sublabel": "chat.deepseek.com"
+    }
+  ],
+  "segments": [
+    {
+      "from": 130,
+      "to": 204,
+      "label": "请求接入 · 过闸"
+    },
+    {
+      "from": 205,
+      "to": 262,
+      "label": "网页端临时会话"
+    },
+    {
+      "from": 263,
+      "to": 435,
+      "label": "SSE 流式生成"
+    },
+    {
+      "from": 436,
+      "to": 525,
+      "label": "收尾与响应"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "zcode",
+      "to": "server",
+      "y": 160,
+      "label": "POST /v1/chat/completions",
+      "variant": "emphasis"
+    },
+    {
+      "id": "acquire",
+      "from": "server",
+      "to": "gate",
+      "y": 189,
+      "label": "acquire（串行排队）"
+    },
+    {
+      "id": "to-provider",
+      "from": "server",
+      "to": "provider",
+      "y": 218,
+      "label": "对话转写 + 工具目录",
+      "variant": "emphasis"
+    },
+    {
+      "id": "new-session",
+      "from": "provider",
+      "to": "web",
+      "y": 247,
+      "label": "create session + PoW（SHA3 WASM）"
+    },
+    {
+      "id": "completion",
+      "from": "provider",
+      "to": "web",
+      "y": 276,
+      "label": "POST /chat/completion"
+    },
+    {
+      "id": "sse-frames",
+      "from": "web",
+      "to": "provider",
+      "y": 305,
+      "label": "SSE: 思考 / 正文片段"
+    },
+    {
+      "id": "chunk-thinking",
+      "from": "provider",
+      "to": "server",
+      "y": 334,
+      "label": "chunk: reasoning_content"
+    },
+    {
+      "id": "chunk-tool",
+      "from": "provider",
+      "to": "server",
+      "y": 363,
+      "label": "chunk: content / tool_calls"
+    },
+    {
+      "id": "finished",
+      "from": "web",
+      "to": "provider",
+      "y": 392,
+      "label": "status: FINISHED",
+      "variant": "return"
+    },
+    {
+      "id": "del-session",
+      "from": "provider",
+      "to": "web",
+      "y": 421,
+      "label": "delete chat_session（攒批）"
+    },
+    {
+      "id": "done",
+      "from": "server",
+      "to": "zcode",
+      "y": 450,
+      "label": "chunk 流 → [DONE]",
+      "variant": "emphasis"
+    },
+    {
+      "id": "release",
+      "from": "server",
+      "to": "gate",
+      "y": 479,
+      "label": "release（耗时 / 受限落库）",
+      "variant": "return"
+    }
+  ]
+}
