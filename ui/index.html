@@ -93,7 +93,7 @@
         <div class="url" id="base-url">http://127.0.0.1:8787/v1</div>
         <div class="muted">按模型名自动路由：<code>deepseek-*</code> → DeepSeek 网页 · <code>qwen*</code> → 千问网页 · <code>doubao-*</code> → 豆包网页</div>
       </div>
-      <label class="switch"><input type="checkbox" id="svc-switch" /> 开启服务</label>
+      <button id="svc-btn">启动服务</button>
     </div>
   </div>
 
@@ -221,30 +221,48 @@
       $('status-detail').textContent = '';
     }
     serviceUp = up;
-    if (Date.now() > svcSuppressUntil) $('svc-switch').checked = up;
+    if (Date.now() > svcSuppressUntil) renderSvcBtn();
   }
 
-  $('svc-switch').addEventListener('change', async (e) => {
-    const on = e.target.checked;
-    if (!window.__TAURI__) { log('当前不在桌面壳里运行，无法启停服务。'); e.target.checked = !on; return; }
+  function renderSvcBtn() {
+    const btn = $('svc-btn');
+    if (serviceUp) {
+      btn.textContent = '停止服务';
+      btn.className = 'danger';
+      btn.title = '服务运行中，点击停止（并关闭「启动反代」自启）';
+    } else {
+      btn.textContent = '启动服务';
+      btn.className = '';
+      btn.title = '服务未运行，点击启动（并开启「启动反代」自启）';
+    }
+  }
+
+  $('svc-btn').addEventListener('click', async () => {
+    const turningOn = !serviceUp;
+    if (!window.__TAURI__) { log('当前不在桌面壳里运行，无法启停服务。'); return; }
     svcSuppressUntil = Date.now() + 6000;  // 启动/停止有 1~2s 延迟，先压住轮询回写
+    // 先按点击意图渲染按钮态（启动有延迟，不等轮询）
+    serviceUp = turningOn;
+    renderSvcBtn();
     try {
-      if (on) {
+      if (turningOn) {
         const res = JSON.parse(await window.__TAURI__.core.invoke('start_service'));
         log(res.ok ? `服务已启动（端口 ${res.port}）` : '启动失败：' + (res.message || '未知'));
+        if (!res.ok) serviceUp = false;
       } else {
         await window.__TAURI__.core.invoke('stop_service');
         log('服务已停止（「启动反代」已同步关闭，下次打开应用不再自动运行）');
       }
-      $('dot').classList.toggle('ok', on && true);
-      if (!on) {
+      $('dot').classList.toggle('ok', serviceUp);
+      if (!serviceUp) {
         $('dot').classList.remove('ok');
-        $('status-text').textContent = '服务未运行 —— 用右上角「开启服务」启动';
+        $('status-text').textContent = '服务未运行 —— 点「启动服务」启动';
       }
     } catch (err) {
       log('操作失败：' + err);
-      e.target.checked = !on;
+      serviceUp = !turningOn;
     }
+    renderSvcBtn();
     setTimeout(refreshAll, 1200);
   });
 
