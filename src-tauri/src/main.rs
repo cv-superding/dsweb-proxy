@@ -47,6 +47,49 @@ fn proxy_config_path() -> PathBuf {
 
 /// 读 (enabled, port)。缺文件 / 坏 JSON 一律按「启用 + 8787」——宁可多起一次服务，
 /// 也不要因为一个手改坏的配置文件让反代静默不启动。
+/// 把 `enabled` 写回 proxy.json（其余字段原样保留）。
+fn set_config_enabled(enabled: bool) {
+    let path = proxy_config_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
+    let mut json: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({}));
+    json["enabled"] = serde_json::Value::Bool(enabled);
+    if let Ok(pretty) = serde_json::to_string_pretty(&json) {
+        let _ = std::fs::write(&path, pretty);
+    }
+}
+
+/// 读窗口尺寸（proxy.json 的 windowWidth/windowHeight）。缺省 1280x1000；
+/// 手改配置越界时回落默认，别让一个坏数字把窗口变成 1px。
+fn read_window_config() -> (f64, f64) {
+    let path = proxy_config_path();
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return (1280.0, 1000.0),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(_) => return (1280.0, 1000.0),
+    };
+    let clamp = |v: f64, lo: f64, hi: f64, dft: f64| {
+        if v.is_finite() && v >= lo && v <= hi { v } else { dft }
+    };
+    let w = json.get("windowWidth").and_then(|v| v.as_f64()).unwrap_or(1280.0);
+    let h = json.get("windowHeight").and_then(|v| v.as_f64()).unwrap_or(1000.0);
+    (clamp(w, 400.0, 3000.0, 1280.0), clamp(h, 400.0, 2400.0, 1000.0))
+}
+
+/// 把窗口尺寸写回 proxy.json（其余字段原样保留）。
+fn set_config_window_size(width: f64, height: f64) {
+    let path = proxy_config_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
+    let mut json: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({}));
+    json["windowWidth"] = serde_json::Value::from(width);
+    json["windowHeight"] = serde_json::Value::from(height);
+    if let Ok(pretty) = serde_json::to_string_pretty(&json) {
+        let _ = std::fs::write(&path, pretty);
+    }
+}
+
 fn read_config() -> (bool, u16) {
     let path = proxy_config_path();
     let text = match std::fs::read_to_string(&path) {
@@ -123,6 +166,51 @@ fn spawn_serve(app: &AppHandle, state: &State<SidecarChild>) -> Result<(), Strin
     Ok(())
 }
 
+/// 当前窗口尺寸（控制台设置卡回显用）。
+#[tauri::command]
+fn get_window_config() -> String {
+    let (width, height) = read_window_config();
+    serde_json::json!({ "width": width, "height": height }).to_string()
+}
+
+/// 设置窗口尺寸：立即 resize 主窗口，并落盘为下次打开的默认尺寸。
+#[tauri::command]
+fn set_window_size(app: AppHandle, width: f64, height: f64) -> String {
+    let clamp = |v: f64, lo: f64, hi: f64| if v.is_finite() && v >= lo && v <= hi { v } else { 0.0 };
+    let (w, h) = (clamp(width, 400.0, 3000.0), clamp(height, 400.0, 2400.0));
+    if w == 0.0 || h == 0.0 {
+        return serde_json::json!({ "ok": false, "message": "宽高需在 400~3000 / 400~2400 之间" }).to_string();
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    }
+    set_config_window_size(w, h);
+    serde_json::json!({ "ok": true, "width": w, "height": h }).to_string()
+}
+
+/// 开启服务：立即拉起 sidecar，并把「启动反代」落盘为开（下次启动也自动运行）。
+#[tauri::command]
+fn start_service(app: AppHandle, state: State<SidecarChild>) -> String {
+    set_config_enabled(true);
+    match spawn_serve(&app, &state) {
+        Ok(()) => {
+            let (_, port) = read_config();
+            serde_json::json!({ "ok": true, "port": port }).to_string()
+        }
+        Err(e) => serde_json::json!({ "ok": false, "message": e }).to_string(),
+    }
+}
+
+/// 停止服务：杀掉 sidecar，并把「启动反代」落盘为关（下次启动不再自动运行）。
+#[tauri::command]
+fn stop_service(state: State<SidecarChild>) -> String {
+    set_config_enabled(false);
+    if let Some(child) = state.0.lock().ok().and_then(|mut g| g.take()) {
+        let _ = child.kill();
+    }
+    serde_json::json!({ "ok": true, "stopped": true }).to_string()
+}
+
 /// 重启服务：杀掉当前 sidecar 再按**磁盘上的最新配置**拉起。
 /// 控制台改完端口/开关后点「重启服务」走这里（端口变更无法热生效 —— 需要重新 listen）。
 #[tauri::command]
@@ -195,6 +283,12 @@ fn main() {
                 })
                 .build(app)?;
 
+            // 窗口尺寸按 proxy.json 应用（tauri.conf 的 1280x1000 只是打包缺省）
+            let (ww, wh) = read_window_config();
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = window.set_size(tauri::LogicalSize::new(ww, wh));
+            }
+
             // sidecar
             let state: State<SidecarChild> = handle.state();
             if let Err(e) = spawn_serve(&handle, &state) {
@@ -210,7 +304,7 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service])
+        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size])
         .run(tauri::generate_context!())
         .expect("error while running dsweb-proxy");
 }

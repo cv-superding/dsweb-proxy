@@ -128,8 +128,11 @@ config   查看配置与 ZCode 接入片段
 
 ```json
 {
+  "enabled": true,
   "port": 8787,
   "host": "127.0.0.1",
+  "windowWidth": 1280,
+  "windowHeight": 1000,
   "apiKey": "设了就强制 Bearer 校验",
   "deepseek": {
     "minRequestIntervalMs": 2000,
