@@ -201,7 +201,11 @@
       for (const t of document.querySelectorAll('.tab')) t.classList.remove('on');
       tab.classList.add('on');
       currentProvider = tab.dataset.p;
-      refreshAll();
+      // 页面就绪：先亮窗（消灭启动白屏），再拉数据
+  if (window.__TAURI__) {
+    try { window.__TAURI__.core.invoke('show_window'); } catch {}
+  }
+  refreshAll();
     });
   }
 
@@ -210,7 +214,6 @@
     try {
       const data = await (await fetchT(BASE + '/admin/status')).json();
       up = true;
-      const st = data.providers[currentProvider];
       const st = data.providers[currentProvider];
       if (st?.loggedIn) {
         $('dot').classList.add('ok');
@@ -507,6 +510,10 @@
   });
 
   function refreshAll() { loadConfig(); refreshStatus(); refreshModels(); refreshAccounts(); }
+  // 页面就绪：先亮窗（消灭启动白屏），再拉数据
+  if (window.__TAURI__) {
+    try { window.__TAURI__.core.invoke('show_window'); } catch {}
+  }
   refreshAll();
   setInterval(() => {
     if (document.hidden) return;  // 后台窗口不轮询，回前台立刻刷一轮
