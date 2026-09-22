@@ -58,24 +58,24 @@ fn set_config_enabled(enabled: bool) {
     }
 }
 
-/// 读窗口尺寸（proxy.json 的 windowWidth/windowHeight）。缺省 800x600；
+/// 读窗口尺寸（proxy.json 的 windowWidth/windowHeight）。缺省 900x700；
 /// 手改配置越界时回落默认，别让一个坏数字把窗口变成 1px。
 fn read_window_config() -> (f64, f64) {
     let path = proxy_config_path();
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(_) => return (800.0, 600.0),
+        Err(_) => return (900.0, 700.0),
     };
     let json: serde_json::Value = match serde_json::from_str(&text) {
         Ok(v) => v,
-        Err(_) => return (800.0, 600.0),
+        Err(_) => return (900.0, 700.0),
     };
     let clamp = |v: f64, lo: f64, hi: f64, dft: f64| {
         if v.is_finite() && v >= lo && v <= hi { v } else { dft }
     };
-    let w = json.get("windowWidth").and_then(|v| v.as_f64()).unwrap_or(800.0);
-    let h = json.get("windowHeight").and_then(|v| v.as_f64()).unwrap_or(600.0);
-    (clamp(w, 400.0, 3000.0, 800.0), clamp(h, 400.0, 2400.0, 600.0))
+    let w = json.get("windowWidth").and_then(|v| v.as_f64()).unwrap_or(900.0);
+    let h = json.get("windowHeight").and_then(|v| v.as_f64()).unwrap_or(700.0);
+    (clamp(w, 400.0, 3000.0, 900.0), clamp(h, 400.0, 2400.0, 700.0))
 }
 
 /// 把窗口尺寸写回 proxy.json（其余字段原样保留）。
@@ -283,7 +283,7 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 窗口尺寸按 proxy.json 应用（tauri.conf 的 800x600 只是打包缺省）
+            // 窗口尺寸按 proxy.json 应用（tauri.conf 的 900x700 只是打包缺省）
             let (ww, wh) = read_window_config();
             if let Some(window) = handle.get_webview_window("main") {
                 let _ = window.set_size(tauri::LogicalSize::new(ww, wh));
