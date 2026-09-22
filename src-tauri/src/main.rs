@@ -166,6 +166,16 @@ fn spawn_serve(app: &AppHandle, state: &State<SidecarChild>) -> Result<(), Strin
     Ok(())
 }
 
+/// 前端页面就绪后调用：显示主窗口（消灭启动白屏 —— HTML 渲染完才亮）。
+#[tauri::command]
+fn show_window(app: AppHandle) -> String {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    serde_json::json!({ "ok": true }).to_string()
+}
+
 /// 当前窗口尺寸（控制台设置卡回显用）。
 #[tauri::command]
 fn get_window_config() -> String {
@@ -304,7 +314,7 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size])
+        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size, show_window])
         .run(tauri::generate_context!())
         .expect("error while running dsweb-proxy");
 }
