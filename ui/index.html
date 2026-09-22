@@ -187,6 +187,12 @@
     return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function log(text) { $('log').textContent = text; }
+  // 冷启动时 sidecar 可能还没 listen，无超时的 fetch 会挂在 SYN 重传上（Windows ~21s）
+  // —— 这就是「加载中……」卡住的根因。统一 5s 超时，快速失败。
+  function fetchT(path, options = {}) {
+    return fetch(path, { ...options, signal: AbortSignal.timeout(5000) });
+  }
+  let accountsInFlight = false;
   let serviceUp = false;
   let svcSuppressUntil = 0;
 
@@ -202,7 +208,7 @@
   async function refreshStatus() {
     let up = false;
     try {
-      const data = await (await fetch(BASE + '/admin/status')).json();
+      const data = await (await fetchT(BASE + '/admin/status')).json();
       up = true;
       const st = data.providers[currentProvider];
       const st = data.providers[currentProvider];
@@ -268,17 +274,19 @@
 
   async function refreshModels() {
     try {
-      const data = await (await fetch(BASE + '/v1/models')).json();
+      const data = await (await fetchT(BASE + '/v1/models')).json();
       const mine = data.data.filter((m) => m.owned_by === currentProvider);
       $('models').innerHTML = mine.map((m) => `<code>${esc(m.id)}</code>`).join(' · ') || '（无）';
     } catch { $('models').textContent = '（服务未响应）'; }
   }
 
   async function refreshAccounts() {
+    if (accountsInFlight) return;  // 轮询 + 手动操作并发时，后到的会覆盖先到的渲染
+    accountsInFlight = true;
     try {
       const [groupData, accountData] = await Promise.all([
-        (await fetch(`${BASE}/admin/groups?provider=${dir()}`)).json(),
-        (await fetch(`${BASE}/admin/accounts?provider=${dir()}`)).json(),
+        (await fetchT(`${BASE}/admin/groups?provider=${dir()}`)).json(),
+        (await fetchT(`${BASE}/admin/accounts?provider=${dir()}`)).json(),
       ]);
       const byId = Object.fromEntries((accountData.accounts || []).map((a) => [a.id, a]));
       const groups = groupData.groups || [];
@@ -337,7 +345,9 @@
       }
       $('accounts-body').innerHTML = bodyHtml;
     } catch {
-      $('accounts-body').innerHTML = '<div class="muted">账号库读取失败（服务未运行）</div>';
+      $('accounts-body').innerHTML = '<div class="muted">账号库读取失败 —— 服务未运行？点右上角「启动服务」后自动恢复（10 秒轮询）</div>';
+    } finally {
+      accountsInFlight = false;
     }
   }
 
@@ -347,14 +357,14 @@
     refreshAccounts();
   };
   window.setGroup = async (id, groupId) => {
-    await fetch(BASE + '/admin/accounts/group', {
+    await fetchT(BASE + '/admin/accounts/group', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, groupId, provider: dir() }),
     });
     refreshAccounts();
   };
   window.switchTo = async (id) => {
-    await fetch(BASE + '/admin/accounts/switch', {
+    await fetchT(BASE + '/admin/accounts/switch', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, provider: dir() }),
     });
@@ -363,7 +373,7 @@
   window.removeAccount = async (id, btn) => {
     if (!confirm('确定删除这个账号？凭证文件会被移除（建议先导出备份）。')) return;
     btn.disabled = true;
-    await fetch(BASE + '/admin/accounts/remove', {
+    await fetchT(BASE + '/admin/accounts/remove', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, provider: dir() }),
     });
@@ -372,7 +382,7 @@
   window.renameGroup = async (id) => {
     const name = prompt('新的分组名（最多 20 字）：');
     if (!name) return;
-    const res = await (await fetch(BASE + '/admin/groups/rename', {
+    const res = await (await fetchT(BASE + '/admin/groups/rename', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, name, provider: dir() }),
     })).json();
@@ -381,7 +391,7 @@
   };
   window.deleteGroup = async (id) => {
     if (!confirm('删除这个分组？账号不会被删除，只会落回「未分组」。')) return;
-    await fetch(BASE + '/admin/groups/remove', {
+    await fetchT(BASE + '/admin/groups/remove', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, provider: dir() }),
     });
@@ -402,7 +412,7 @@
   $('btn-login').addEventListener('click', async () => {
     log(`正在拉起浏览器登录${PROVIDER_NAME[currentProvider]}（新账号入库，不影响当前账号）……`);
     try {
-      const res = await (await fetch(BASE + '/admin/login', {
+      const res = await (await fetchT(BASE + '/admin/login', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider: currentProvider }),
       })).json();
@@ -424,7 +434,7 @@
   // ── 服务设置 ──
   async function loadConfig() {
     try {
-      const cfg = await (await fetch(BASE + '/admin/config')).json();
+      const cfg = await (await fetchT(BASE + '/admin/config')).json();
       BASE = `http://127.0.0.1:${cfg.runningPort}`;
       $('base-url').textContent = `${BASE}/v1`;
       $('cfg-enabled').checked = cfg.enabled !== false;
@@ -455,7 +465,7 @@
       ...(apiKeyRaw && !apiKeyRaw.startsWith('****') ? { apiKey: apiKeyRaw } : {}),
     };
     try {
-      const res = await (await fetch(BASE + '/admin/config', {
+      const res = await (await fetchT(BASE + '/admin/config', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       })).json();
@@ -477,7 +487,7 @@
   $('btn-clearkey').addEventListener('click', async () => {
     if (!confirm('清除 API key 门禁？（任何本机程序都能直接调用）')) return;
     try {
-      await fetch(BASE + '/admin/config', {
+      await fetchT(BASE + '/admin/config', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ apiKey: '' }),
       });
@@ -498,7 +508,11 @@
 
   function refreshAll() { loadConfig(); refreshStatus(); refreshModels(); refreshAccounts(); }
   refreshAll();
-  setInterval(() => { refreshStatus(); refreshAccounts(); }, 10000);
+  setInterval(() => {
+    if (document.hidden) return;  // 后台窗口不轮询，回前台立刻刷一轮
+    refreshStatus(); refreshAccounts();
+  }, 10000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
 </script>
 </body>
 </html>
