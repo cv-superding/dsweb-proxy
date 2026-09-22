@@ -14,7 +14,7 @@
         "width": 900,
         "height": 700,
         "resizable": true,
-        "visible": true,
+        "visible": false,
         "url": "index.html"
       }
     ],
