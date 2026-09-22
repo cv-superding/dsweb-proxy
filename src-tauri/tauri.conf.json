@@ -11,8 +11,8 @@
     "windows": [
       {
         "title": "dsweb-proxy 控制台",
-        "width": 1280,
-        "height": 1000,
+        "width": 800,
+        "height": 600,
         "resizable": true,
         "visible": true,
         "url": "index.html"
