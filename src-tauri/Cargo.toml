@@ -1,6 +1,6 @@
 [package]
 name = "dsweb-proxy-app"
-version = "0.1.0"
+version = "0.1.1"
 description = "DeepSeek 网页版 → OpenAI 兼容反代（桌面壳）"
 edition = "2021"
 rust-version = "1.77"
