@@ -269,7 +269,7 @@ export class DeepseekWebProvider implements WebProxyProvider {
       // 账号级死亡（限流封号 / 登录态失效）：落库限制时间，按开关轮转到下一个账号。
       // 轮转成功 → 对外报可重试错误（新账号承担下一次请求）；没号可切 → 原样抛出真实错误。
       const mutedUntilMs = Number.isFinite(error?.mutedUntilMs) ? Number(error.mutedUntilMs) : undefined
-      if (mutedUntilMs !== undefined && accountIdAtStart) markAccountLimited(accountIdAtStart, mutedUntilMs)
+      if (mutedUntilMs !== undefined && accountIdAtStart) markAccountLimited(accountIdAtStart, mutedUntilMs, ACCOUNT_DIR, 'muted')
       // 轮转开关以**磁盘当前值**为准（控制台改完下一次失败就生效，不必重启 sidecar）。
       const rotation = handleAccountFailure(error, {
         rotation: this.rotationEnabled && runtimeConfig().rotation !== false,
@@ -444,6 +444,21 @@ export class DeepseekWebProvider implements WebProxyProvider {
             }
             if (event.kind === 'error') {
               if (event.code === 'RATE_LIMIT') {
+                // muted（账号封禁）单独成类：带解除时间抛出，gatedChat 的 catch 才能落库 + 切号。
+                // 误归成"窗口并发"会让轮转永远不触发（用户实测现象）。
+                const mutedUntil = (event as any).mutedUntilMs
+                if (event.rateLimitKind === 'muted' || Number.isFinite(mutedUntil)) {
+                  throw new AdapterLlmError(
+                    Number.isFinite(mutedUntil)
+                      ? `DeepSeek 网页端已临时限制本账号（user is muted）：预计 ${new Date(mutedUntil).toLocaleString('zh-CN', { hour12: false })} 解除，将自动切换账号。`
+                      : `DeepSeek 网页端已临时限制本账号（user is muted），未给出解除时间。`,
+                    'RATE_LIMIT',
+                    {
+                      ...(Number.isFinite(mutedUntil) ? { providerRetryAfterMs: Math.max(0, mutedUntil - Date.now()) } : {}),
+                      ...(Number.isFinite(mutedUntil) ? { mutedUntilMs: mutedUntil } : {}),
+                    },
+                  )
+                }
                 throw new AdapterLlmError(
                   event.rateLimitKind === 'throttled'
                     ? `DeepSeek 网页端对这个账号限流了（发得太频繁）。这一步会自动退避重试。`
@@ -464,7 +479,12 @@ export class DeepseekWebProvider implements WebProxyProvider {
             }
           }
         } catch (error: any) {
-          if (rounds > 0) {
+          // 账号级死亡（封号/登录失效）不分轮次：立即向上抛给 gatedChat 走轮转，
+          // 否则"续写轮"的失败会被 roundError 吞掉 → 永远不切号。
+          const deadNow =
+            Number.isFinite(error?.mutedUntilMs) ||
+            /AUTH|40003|MISSING_CREDENTIAL/i.test(String(error?.code ?? ''))
+          if (rounds > 0 && !deadNow) {
             if (request.signal?.aborted) throw new AdapterLlmError('请求被取消', 'ABORTED', { cause: error })
             roundError =
               error instanceof AdapterLlmError

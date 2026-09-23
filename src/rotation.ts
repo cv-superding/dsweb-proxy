@@ -31,11 +31,16 @@ export function isAccountDeadError(error: unknown): { dead: boolean; mutedUntilM
   return { dead: false }
 }
 
-/** 把受限信息落到账号记录上（界面据此显示倒计时）。 */
-export function markAccountLimited(accountId: string, mutedUntilMs: number, provider: string = 'deepseek'): void {
+/** 把受限信息落到账号记录上（界面据此显示原因与倒计时）。 */
+export function markAccountLimited(
+  accountId: string,
+  mutedUntilMs: number,
+  provider: string = 'deepseek',
+  reason: 'muted' | 'throttled' | 'auth' = 'muted',
+): void {
   try {
     updateAccount(accountId, {
-      limit: { untilMs: mutedUntilMs, observedAt: new Date().toISOString() },
+      limit: { untilMs: mutedUntilMs, observedAt: new Date().toISOString(), reason },
     } as any, provider)
   } catch {}
 }
@@ -93,7 +98,7 @@ export function handleAccountFailure(error: AdapterLlmError, options: { rotation
   const provider = options.provider ?? 'deepseek'
   const verdict = isAccountDeadError(error)
   if (!verdict.dead) return { switched: false, reason: 'no-dead-error' }
-  const currentId = activeAccountId()
+  const currentId = activeAccountId(provider)
   if (currentId && verdict.mutedUntilMs) markAccountLimited(currentId, verdict.mutedUntilMs, provider)
   if (!options.rotation) return { switched: false, reason: 'disabled' }
   return rotateToNextAccount(provider)

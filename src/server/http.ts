@@ -160,7 +160,12 @@ async function route(req: IncomingMessage, res: ServerResponse, config: ProxyCon
       // 受限状态：带解除时间戳（客户端算倒计时）；已过期的在列表读取时直接当无限制
       limit:
         account.limit && account.limit.untilMs > now
-          ? { untilMs: account.limit.untilMs, remainingMs: account.limit.untilMs - now }
+          ? {
+              untilMs: account.limit.untilMs,
+              remainingMs: account.limit.untilMs - now,
+              // 原因：muted=封号（user is muted）/ throttled=频控 / auth=登录态失效
+              reason: (account.limit as any).reason ?? 'muted',
+            }
           : null,
       active: account.id === activeAccountId(providerId),
     }))

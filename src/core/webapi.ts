@@ -1111,7 +1111,7 @@ export type WebStreamEvent =
       code?: string
       retryAfterMs?: number
       /** RATE_LIMIT 细分：并发抢占（等对面写完）还是账号节流（等限流解除）—— 文案与退避都不同 */
-      rateLimitKind?: 'concurrent' | 'throttled'
+      rateLimitKind?: 'concurrent' | 'throttled' | 'muted'
     }
 
 interface Fragment {
@@ -1438,7 +1438,18 @@ export function createSseState(options: SseStateOptions = {}) {
           message,
           ...(d.finish_reason !== undefined ? { raw: String(d.finish_reason) } : {}),
         }
-        if (isBusyGenerating(message)) {
+        // 账号封禁（user is muted）也可能以流内错误帧出现：带上解除时间，
+        // 否则 provider 拿不到 mutedUntilMs → 轮转器不知道这个号死了 → 永远不切号。
+        const streamBiz = (d as any)?.data?.biz_data ?? (d as any)?.biz_data
+        if (isMutedError(d) || (streamBiz && isMutedError(streamBiz))) {
+          const untilMs = muteUntilMs(d) ?? muteUntilMs({ data: { biz_data: streamBiz } })
+          event.code = 'RATE_LIMIT'
+          event.rateLimitKind = 'muted'
+          if (untilMs !== undefined) {
+            event.retryAfterMs = Math.max(0, untilMs - Date.now())
+            ;(event as any).mutedUntilMs = untilMs
+          }
+        } else if (isBusyGenerating(message)) {
           event.code = 'RATE_LIMIT'
           event.retryAfterMs = 5_000
           event.rateLimitKind = 'concurrent'

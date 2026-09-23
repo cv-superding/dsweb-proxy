@@ -81,7 +81,7 @@ export interface AccountRecord extends WebAuth {
    * 也就是说探活其实探得出来，只是目前还没接上。
    * 现在这个状态仍然只从**生成失败**里学到（失败信封里的 mute_until，见 webapi.ts 的 muteUntilMs）。
    */
-  limit?: { untilMs: number; observedAt: string }
+  limit?: { untilMs: number; observedAt: string; reason?: 'muted' | 'throttled' | 'auth' }
 }
 
 const INDEX_VERSION = 1
@@ -205,7 +205,11 @@ function normalizeRecord(raw: any, fallbackId?: string): AccountRecord | undefin
       ? { lastVerifyError: { at: raw.lastVerifyError.at, message: String(raw.lastVerifyError.message ?? '') } }
       : {}),
     ...(raw.limit && Number.isFinite(raw.limit?.untilMs)
-      ? { limit: { untilMs: Number(raw.limit.untilMs), observedAt: String(raw.limit.observedAt ?? '') } }
+      ? { limit: {
+          untilMs: Number(raw.limit.untilMs),
+          observedAt: String(raw.limit.observedAt ?? ''),
+          ...((raw.limit as any).reason ? { reason: (raw.limit as any).reason } : {}),
+        } }
       : {}),
   }
 }

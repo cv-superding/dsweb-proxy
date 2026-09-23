@@ -18,7 +18,9 @@ export function commitCapturedAuth(
 ): WebAuth {
   const normalized = withVerifiedIdentity(auth, auth.user)
   writeAuth(normalized, provider)
-  return normalized
+  // ⚠️ 返回**落库后的记录**（带 id）：原实现返回 upsert 之前的 normalized（无 id），
+  // 调用方拿到 undefined id → 轮转器无法锁定"出错账号"，会把刚挂的号又选回来。
+  return readAuth(provider) ?? normalized
 }
 
 /** 清除当前账号凭证（不动浏览器分区的登录态 —— 那是 login 命令的事）。 */
