@@ -106,9 +106,11 @@
       <span class="hint">关闭后壳不再自动拉起（保存并重启服务后生效）</span>
     </div>
     <div class="field">
-      <label>监听端口</label>
-      <input type="number" id="cfg-port" min="1024" max="65535" />
-      <span class="hint">1024~65535；改动需「重启服务」</span>
+      <label>监听地址</label>
+      <input type="text" id="cfg-host" style="width:150px" placeholder="127.0.0.1" />
+      <span class="muted">:</span>
+      <input type="number" id="cfg-port" min="1024" max="65535" style="width:110px" />
+      <span class="hint">改 host 或端口都需「重启服务」；host 填 0.0.0.0 可让局域网访问（记得设 API key）</span>
     </div>
     <div class="field">
       <label>窗口大小</label>
@@ -479,11 +481,12 @@
   async function loadConfig() {
     try {
       const cfg = await (await fetchT(BASE + '/admin/config')).json();
-      BASE = `http://127.0.0.1:${cfg.runningPort}`;
+      BASE = `http://${cfg.runningHost}:${cfg.runningPort}`;
       $('base-url').textContent = `${BASE}/v1`;
       $('cfg-enabled').checked = cfg.enabled !== false;
       $('cfg-rotation').checked = cfg.rotation !== false;
       $('cfg-port').value = cfg.port ?? 8787;
+      $('cfg-host').value = cfg.runningHost ?? '127.0.0.1';
       if (document.activeElement !== $('cfg-apikey')) {
         $('cfg-apikey').value = '';
         $('cfg-apikey').placeholder = cfg.apiKeySet ? `已设置（${cfg.apiKey}）—— 输入新值可更换` : '留空 = 不校验（仅本机时可留空）';
@@ -506,6 +509,7 @@
       enabled: $('cfg-enabled').checked,
       rotation: $('cfg-rotation').checked,
       port: Number($('cfg-port').value),
+      host: $('cfg-host').value.trim() || '127.0.0.1',
       ...(apiKeyRaw && !apiKeyRaw.startsWith('****') ? { apiKey: apiKeyRaw } : {}),
     };
     try {
