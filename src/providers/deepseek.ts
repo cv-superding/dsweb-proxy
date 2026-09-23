@@ -220,14 +220,22 @@ export class DeepseekWebProvider implements WebProxyProvider {
     }
   }
 
-  async login(options?: { headless?: boolean }) {
-    const { browserLogin } = await import('../core/browser-login.ts')
+  async login(options?: { headless?: boolean; fresh?: boolean }) {
+    const { browserLogin, clearBrowserLoginProfile } = await import('../core/browser-login.ts')
+    // ⚠️ 登录前必须清掉上次的浏览器 profile：否则窗口一打开就是**已登录状态**，
+    // 脚本立刻捕获并关窗 —— 用户看到的就是"闪一下没了"（实测 2026-09-23）。
+    // 只清 profile（不动账号库），登录完成后新账号入库。
+    if (options?.fresh !== false) {
+      try {
+        const profileDir = (await import('../core/browser-login.ts')).DEFAULT_PROFILE_DIR
+        clearBrowserLoginProfile(profileDir)
+      } catch {}
+    }
     try {
       const outcome = await browserLogin({
         ...(options?.headless !== undefined ? { headless: options.headless } : {}),
       } as any)
       if (outcome?.auth) {
-        const { commitCapturedAuth } = await import('./account-ctx.ts')
         // 校验身份并回填显示名（users/current 只读零额度）——否则账号库里是一串 acc_xxx
         let display: string | undefined
         let serverId: string | undefined
@@ -239,6 +247,7 @@ export class DeepseekWebProvider implements WebProxyProvider {
             serverId = verdict.user?.id
           }
         } catch {}
+        const { commitCapturedAuth } = await import('./account-ctx.ts')
         const normalized = commitCapturedAuth(
           {
             ...(outcome.auth as any),
@@ -246,8 +255,10 @@ export class DeepseekWebProvider implements WebProxyProvider {
             ...(serverId ? { serverId } : {}),
           } as any,
           ACCOUNT_DIR,
+          // 「登录新账号」= 入库但**不切换当前账号**（正在用的号不该被顶掉）
+          { activate: false },
         )
-        return { ok: true, message: `登录成功（${display ?? String((normalized as any).id ?? '')}）` }
+        return { ok: true, message: `登录成功，已加入账号库：${display ?? String((normalized as any).id ?? '')}（当前账号未改变）` }
       }
       return { ok: false, message: String((outcome as any)?.error ?? '登录未完成（窗口被关闭或超时）') }
     } catch (error: any) {

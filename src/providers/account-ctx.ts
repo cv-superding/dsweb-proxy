@@ -5,6 +5,7 @@
  */
 import type { WebAuth } from '../core/auth.ts'
 import { readAuth, writeAuth, clearAuth, withVerifiedIdentity } from '../core/auth.ts'
+import { upsertAccount } from '../core/accounts.ts'
 
 /** 当前生效的登录凭证（没有 → undefined）。 */
 export function readActiveAuth(provider: string = 'deepseek'): WebAuth | undefined {
@@ -15,8 +16,14 @@ export function readActiveAuth(provider: string = 'deepseek'): WebAuth | undefin
 export function commitCapturedAuth(
   auth: WebAuth & { serverId?: string; user?: { id?: string; display?: string } },
   provider: string = 'deepseek',
+  options: { activate?: boolean } = {},
 ): WebAuth {
   const normalized = withVerifiedIdentity(auth, auth.user)
+  if (options.activate === false) {
+    // 「登录新账号」：只入库、不切换当前账号（正在用的号不该被顶掉）
+    upsertAccount(normalized, {}, provider)
+    return readAuth(provider) ?? normalized
+  }
   writeAuth(normalized, provider)
   // ⚠️ 返回**落库后的记录**（带 id）：原实现返回 upsert 之前的 normalized（无 id），
   // 调用方拿到 undefined id → 轮转器无法锁定"出错账号"，会把刚挂的号又选回来。

@@ -276,7 +276,7 @@ export interface BrowserLoginOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
-const DEFAULT_PROFILE_DIR = join(
+export const DEFAULT_PROFILE_DIR = join(
   process.env.DSWEB_PROXY_HOME || join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'web-login'),
   'browser-profile',
 )
