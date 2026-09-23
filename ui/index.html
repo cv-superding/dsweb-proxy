@@ -121,9 +121,9 @@
     </div>
     <div class="field">
       <label>API key</label>
-      <input type="text" id="cfg-apikey" placeholder="" />
+      <input type="text" id="cfg-apikey" placeholder="留空 = 不校验（仅本机时可留空）" style="width:200px" />
       <button class="mini ghost" id="btn-clearkey">清除</button>
-      <span class="hint">设置后 /v1/* 需要 Bearer 校验；ZCode 的 apiKey 要与此一致</span>
+      <span class="hint">设置后 /v1/* 需要 Bearer 校验；ZCode 的 apiKey 要与此一致。显示 ****xxxx 表示已设置，改就整个覆盖</span>
     </div>
     <div class="field">
       <label>轮转</label>
@@ -488,8 +488,9 @@
       $('cfg-port').value = cfg.port ?? 8787;
       $('cfg-host').value = cfg.runningHost ?? '127.0.0.1';
       if (document.activeElement !== $('cfg-apikey')) {
-        $('cfg-apikey').value = '';
-        $('cfg-apikey').placeholder = cfg.apiKeySet ? `已设置（${cfg.apiKey}）—— 输入新值可更换` : '留空 = 不校验（仅本机时可留空）';
+        // 回显掩码值（****1234）到输入框，让"已设置"看得见；服务端不会返回明文。
+        $('cfg-apikey').value = cfg.apiKeySet ? (cfg.apiKey || '****') : '';
+        $('cfg-apikey').placeholder = '留空 = 不校验（仅本机时可留空）';
       }
       $('cfg-hint').textContent = `当前运行：${cfg.runningHost}:${cfg.runningPort}`;
     } catch { $('cfg-hint').textContent = '（服务未响应）'; }
@@ -510,6 +511,7 @@
       rotation: $('cfg-rotation').checked,
       port: Number($('cfg-port').value),
       host: $('cfg-host').value.trim() || '127.0.0.1',
+      // 只有用户真的输入了新值（非掩码）才更新 key；掩码/空值都保持原样
       ...(apiKeyRaw && !apiKeyRaw.startsWith('****') ? { apiKey: apiKeyRaw } : {}),
     };
     try {
