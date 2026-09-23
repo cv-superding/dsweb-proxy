@@ -49,8 +49,11 @@ async function main(): Promise<void> {
       return
     }
     case 'login': {
-      console.log('[dsweb-proxy] 拉起浏览器登录窗口（登录完成后窗口自动关闭）……')
-      const outcome = await provider.login()
+      // 支持指定 provider（控制台在千问/豆包标签页点登录时传 --provider qwen-web）
+      const providerId = args.provider || 'deepseek-web'
+      const target = providerId === 'deepseek-web' ? provider : createProvider(providerId)
+      console.log(`[dsweb-proxy] 拉起浏览器登录窗口（${providerId}，登录完成后窗口自动关闭）……`)
+      const outcome = await target.login()
       console.log(`[dsweb-proxy] ${outcome.message}`)
       process.exit(outcome.ok ? 0 : 1)
       break

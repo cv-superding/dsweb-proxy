@@ -447,18 +447,19 @@
 
   $('btn-login').addEventListener('click', async () => {
     if (loginInFlight) { log('登录流程进行中 —— 浏览器窗口里完成或关掉它再点。'); return; }
-    if (!serviceUp) { log('服务未运行 —— 先点「启动服务」。'); return; }
+    // 登录不依赖反代服务（它只管抓凭证），所以这里不再要求服务在跑
     loginInFlight = true;
     const btn = $('btn-login');
     btn.disabled = true;
     log(`正在拉起浏览器登录${PROVIDER_NAME[currentProvider]}（新账号入库，不影响当前账号）……`);
     try {
-      // 登录是长流程（人工输手机号+验证码，可达 5 分钟）：单独放宽超时
-      const res = await (await fetchT(BASE + '/admin/login', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ provider: currentProvider }),
-      }, { timeout: 360000 })).json();
-      log(res.message || JSON.stringify(res));
+      // 走壳命令：独立子进程跑 login，与 sidecar 是否在跑无关
+      if (window.__TAURI__) {
+        const res = JSON.parse(await window.__TAURI__.core.invoke('open_login', { provider: currentProvider }));
+        log(res.message || JSON.stringify(res));
+      } else {
+        log('当前不在桌面壳里运行，无法拉起登录窗口。');
+      }
       setTimeout(refreshAll, 3000);
     } catch (e) {
       log('失败：' + (e?.name === 'TimeoutError' ? '登录超时（超过 6 分钟），请重试' : e));

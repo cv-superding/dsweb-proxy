@@ -115,16 +115,19 @@ fn proxy_status(state: State<SidecarChild>) -> String {
     serde_json::json!({ "sidecarRunning": running }).to_string()
 }
 
-/// 在 sidecar 里跑 `login` 子命令：拉起系统浏览器窗口（CDP 捕获），完成后自动退出。
+/// 拉起浏览器登录窗口：独立子进程跑 `login` 子命令（CDP 捕获凭证），完成即退出。
+///
+/// ⚠️ **不依赖常驻服务**：登录只做「开浏览器 → 抓凭证 → 写账号库」，
+/// 与 HTTP 反代服务没有关系。早期版本要求服务先启动才能登录，是错的（用户实测反馈）。
 #[tauri::command]
-fn open_login(app: AppHandle, state: State<SidecarChild>) -> String {
+fn open_login(app: AppHandle, _state: State<SidecarChild>, provider: Option<String>) -> String {
     let shell = app.shell();
-    let sidecar_running = state.0.lock().map(|g| g.is_some()).unwrap_or(false);
-    if !sidecar_running {
-        return r#"{"ok":false,"message":"服务未运行（sidecar 未启动）"}"#.into();
-    }
+    let provider_args: Vec<String> = match provider {
+        Some(p) if !p.is_empty() => vec!["--provider".into(), p],
+        _ => vec![],
+    };
     match shell.sidecar("dsweb-proxy-node") {
-        Ok(cmd) => match cmd.args(["login"]).spawn() {
+        Ok(cmd) => match cmd.args(["login"]).args(provider_args).spawn() {
             // tauri v2 shell spawn 返回 (Receiver<CommandEvent>, CommandChild)
             Ok((mut events, _child)) => {
                 tauri::async_runtime::spawn(async move {
@@ -284,7 +287,7 @@ fn main() {
                     "show" => show_main(app),
                     "login" => {
                         let state: State<SidecarChild> = app.state();
-                        let _ = open_login(app.clone(), state);
+                        let _ = open_login(app.clone(), state, None);
                     }
                     "quit" => {
                         app.exit(0);
