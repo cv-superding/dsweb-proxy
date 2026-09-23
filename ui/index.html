@@ -337,12 +337,15 @@
       const rowHtml = (account) => {
         const a = byId[account.id];
         if (!a) return '';
+        const reasonText = { muted: '封号', throttled: '频控', auth: '登录失效' }[a.limit?.reason] || '受限';
         const badge = a.active
-          ? '<span class="badge ok">使用中</span>'
+          ? (a.limit ? `<span class="badge limited">使用中 · ${reasonText}</span>` : '<span class="badge ok">使用中</span>')
           : a.limit
-            ? '<span class="badge limited">受限中</span>'
+            ? `<span class="badge limited">${reasonText}</span>`
             : '<span class="badge unknown">空闲</span>';
-        const limitCell = a.limit ? `还有 <strong>${fmtRemaining(a.limit.remainingMs)}</strong>` : '—';
+        const limitCell = a.limit
+          ? `${reasonText}至 <strong>${new Date(a.limit.untilMs).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</strong>（还有 ${fmtRemaining(a.limit.remainingMs)}）`
+          : '—';
         const verified = a.lastVerifiedAt ? new Date(a.lastVerifiedAt).toLocaleString('zh-CN', { hour12: false }) : '未校验';
         return `<tr class="${a.active ? 'active' : ''}">
           <td title="${esc(a.id)}">${esc(a.label || a.display)}</td>
