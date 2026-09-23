@@ -14,3 +14,4 @@ src-tauri/binaries/*.exe
 .env
 .DS_Store
 Thumbs.db
+*.zip
