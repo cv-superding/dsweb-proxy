@@ -121,7 +121,8 @@
     </div>
     <div class="field">
       <label>API key</label>
-      <input type="text" id="cfg-apikey" placeholder="留空 = 不校验（仅本机时可留空）" style="width:200px" />
+      <input type="text" id="cfg-apikey" placeholder="留空 = 不校验（仅本机时可留空）" style="width:200px" readonly />
+      <button class="mini ghost" id="btn-editkey">修改</button>
       <button class="mini ghost" id="btn-clearkey">清除</button>
       <span class="hint">设置后 /v1/* 需要 Bearer 校验；ZCode 的 apiKey 要与此一致。显示 ****xxxx 表示已设置，改就整个覆盖</span>
     </div>
@@ -487,8 +488,8 @@
       $('cfg-rotation').checked = cfg.rotation !== false;
       $('cfg-port').value = cfg.port ?? 8787;
       $('cfg-host').value = cfg.runningHost ?? '127.0.0.1';
-      if (document.activeElement !== $('cfg-apikey')) {
-        // 回显掩码值（****1234）到输入框，让"已设置"看得见；服务端不会返回明文。
+      if (document.activeElement !== $('cfg-apikey') && $('cfg-apikey').readOnly) {
+        // 只读态才回显掩码；编辑态（用户点了「修改」）不动，免得把输入冲掉
         $('cfg-apikey').value = cfg.apiKeySet ? (cfg.apiKey || '****') : '';
         $('cfg-apikey').placeholder = '留空 = 不校验（仅本机时可留空）';
       }
@@ -529,9 +530,19 @@
           if (!wr.ok) log('窗口尺寸未生效：' + wr.message);
         } catch (e2) { log('窗口尺寸保存失败：' + e2); }
       }
+      $('cfg-apikey').readOnly = true;
       log(res.needsRestart ? '设置已保存 —— 端口变了，需点「重启服务」生效' : '设置已保存（立即生效）');
       loadConfig();
     } catch (e) { log('保存失败：' + e); }
+  });
+
+  $('btn-editkey').addEventListener('click', () => {
+    const field = $('cfg-apikey');
+    field.readOnly = false;
+    field.value = '';
+    field.placeholder = '输入新的 API key（保存后生效）';
+    field.focus();
+    log('请输入新的 API key，然后点「保存设置」。不想改就点「清除」旁边的取消刷新。');
   });
 
   $('btn-clearkey').addEventListener('click', async () => {
