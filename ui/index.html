@@ -453,10 +453,10 @@
     log(`正在拉起浏览器登录${PROVIDER_NAME[currentProvider]}（新账号入库，不影响当前账号）……`);
     try {
       // 登录是长流程（人工输手机号+验证码，可达 5 分钟）：单独放宽超时
-      const res = await (await fetchT(BASE + '/admin/login', { timeout: 360000 }, {
+      const res = await (await fetchT(BASE + '/admin/login', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider: currentProvider }),
-      })).json();
+      }, { timeout: 360000 })).json();
       log(res.message || JSON.stringify(res));
       setTimeout(refreshAll, 3000);
     } catch (e) {

@@ -138,6 +138,10 @@ async function route(req: IncomingMessage, res: ServerResponse, config: ProxyCon
     sendJson(res, 200, await provider.login())
     return
   }
+  if (path === '/admin/login' && req.method === 'GET') {
+    sendJson(res, 405, errorPayload('登录接口需要 POST（UI 应自动使用 POST；看到此错误说明前端版本过旧，请重启应用）', 'METHOD_NOT_ALLOWED', 405))
+    return
+  }
   if (path === '/admin/logout' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}')
     const providerId = typeof body.provider === 'string' && body.provider ? body.provider : 'deepseek-web'
