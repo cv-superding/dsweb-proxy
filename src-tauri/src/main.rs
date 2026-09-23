@@ -166,6 +166,16 @@ fn spawn_serve(app: &AppHandle, state: &State<SidecarChild>) -> Result<(), Strin
     Ok(())
 }
 
+/// 启动引导信息：真实端口 + sidecar 是否在跑。前端首帧请求全靠它打对地址。
+#[tauri::command]
+fn get_boot_config(state: State<SidecarChild>) -> String {
+    let (_, port) = read_config();
+    let running = state.0.lock().map(|g| g.is_some()).unwrap_or(false);
+    // sidecarRunning 只代表「壳拉起过」；手动 CLI serve 的场景靠端口探测兜底
+    let actually = running || std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+    serde_json::json!({ "port": port, "sidecarRunning": actually }).to_string()
+}
+
 /// 前端页面就绪后调用：显示主窗口（消灭启动白屏 —— HTML 渲染完才亮）。
 #[tauri::command]
 fn show_window(app: AppHandle) -> String {
@@ -314,7 +324,7 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size, show_window])
+        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size, show_window, get_boot_config])
         .run(tauri::generate_context!())
         .expect("error while running dsweb-proxy");
 }
