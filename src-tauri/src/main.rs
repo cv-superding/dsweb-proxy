@@ -169,6 +169,106 @@ fn spawn_serve(app: &AppHandle, state: &State<SidecarChild>) -> Result<(), Strin
     Ok(())
 }
 
+
+/// 状态目录（与 Node 侧 core/paths.ts 同一解析顺序）。
+fn state_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("DSWEB_PROXY_HOME") {
+        if !home.is_empty() {
+            return PathBuf::from(home);
+        }
+    }
+    if let Ok(dsh) = std::env::var("DSH_HOME") {
+        if !dsh.is_empty() {
+            return PathBuf::from(dsh).join("web-login");
+        }
+    }
+    let user = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("C:"));
+    PathBuf::from(user).join(".dsh").join("web-login")
+}
+
+/// 直接读账号库（不经 HTTP 服务）。
+///
+/// ⚠️ 为什么壳要自己读：账号库是**磁盘上的静态数据**，与反代服务是否运行毫无关系。
+/// 早期版本把读取绑在服务上，服务没起时控制台就显示「读取失败」——用户实测吐槽
+/// 「服务没开就看不了账号库，什么逻辑」。这里让壳直接扫目录，服务开着与否都能看。
+fn read_accounts_json(provider: &str) -> String {
+    let dir_name = if provider == "deepseek" { "accounts".to_string() } else { format!("accounts-{}", provider) };
+    let dir = state_dir().join(dir_name);
+    let mut accounts: Vec<serde_json::Value> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+            let text = match std::fs::read_to_string(&path) { Ok(t) => t, Err(_) => continue };
+            let rec: serde_json::Value = match serde_json::from_str(&text) { Ok(v) => v, Err(_) => continue };
+            let id = rec.get("id").and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string()))
+                .unwrap_or_default();
+            let display = rec.get("user").and_then(|u| u.get("display")).and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| rec.get("label").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| id.clone());
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+            let limit = rec.get("limit").and_then(|l| l.get("untilMs")).and_then(|v| v.as_u64())
+                .filter(|until| *until > now_ms)
+                .map(|until| serde_json::json!({
+                    "untilMs": until,
+                    "remainingMs": until - now_ms,
+                    "reason": rec.get("limit").and_then(|l| l.get("reason")).and_then(|v| v.as_str()).unwrap_or("muted"),
+                }));
+            accounts.push(serde_json::json!({
+                "id": id,
+                "display": display,
+                "label": rec.get("label").cloned().unwrap_or(serde_json::Value::Null),
+                "groupId": rec.get("groupId").cloned().unwrap_or(serde_json::Value::Null),
+                "capturedAt": rec.get("capturedAt").cloned().unwrap_or(serde_json::Value::Null),
+                "lastVerifiedAt": rec.get("lastVerifiedAt").cloned().unwrap_or(serde_json::Value::Null),
+                "limit": limit.unwrap_or(serde_json::Value::Null),
+            }));
+        }
+    }
+    // 最近捕获的在前
+    accounts.sort_by(|a, b| {
+        let ka = a.get("capturedAt").and_then(|v| v.as_str()).unwrap_or("");
+        let kb = b.get("capturedAt").and_then(|v| v.as_str()).unwrap_or("");
+        kb.cmp(ka)
+    });
+    // 读索引拿当前账号
+    let index_name = if provider == "deepseek" { "accounts.json".to_string() } else { format!("accounts-{}.json", provider) };
+    let active = std::fs::read_to_string(state_dir().join(index_name)).ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("activeId").and_then(|a| a.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default();
+    for acc in accounts.iter_mut() {
+        let is_active = acc.get("id").and_then(|v| v.as_str()) == Some(active.as_str()) && !active.is_empty();
+        acc["active"] = serde_json::Value::Bool(is_active);
+    }
+    serde_json::json!({ "accounts": accounts, "activeId": active }).to_string()
+}
+
+/// 直接读分组定义（同样不经服务）。
+fn read_groups_json(provider: &str) -> String {
+    let name = if provider == "deepseek" { "groups.json".to_string() } else { format!("groups-{}.json", provider) };
+    let text = std::fs::read_to_string(state_dir().join(name)).unwrap_or_else(|_| "[]".into());
+    let groups: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!([]));
+    serde_json::json!({ "groups": groups }).to_string()
+}
+
+/// 账号库与分组：**不经 HTTP 服务**的直读通道（服务未运行时控制台仍可用）。
+#[tauri::command]
+fn read_library(provider: String) -> String {
+    serde_json::json!({
+        "accounts": serde_json::from_str::<serde_json::Value>(&read_accounts_json(&provider))
+            .ok().and_then(|v| v.get("accounts").cloned()).unwrap_or(serde_json::json!([])),
+        "activeId": serde_json::from_str::<serde_json::Value>(&read_accounts_json(&provider))
+            .ok().and_then(|v| v.get("activeId").cloned()).unwrap_or(serde_json::json!("")),
+        "groups": serde_json::from_str::<serde_json::Value>(&read_groups_json(&provider))
+            .ok().and_then(|v| v.get("groups").cloned()).unwrap_or(serde_json::json!([])),
+    }).to_string()
+}
+
 /// 启动引导信息：真实端口 + sidecar 是否在跑。前端首帧请求全靠它打对地址。
 #[tauri::command]
 fn get_boot_config(state: State<SidecarChild>) -> String {
@@ -327,7 +427,7 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size, show_window, get_boot_config])
+        .invoke_handler(tauri::generate_handler![proxy_status, open_login, restart_service, start_service, stop_service, get_window_config, set_window_size, show_window, get_boot_config, read_library])
         .run(tauri::generate_context!())
         .expect("error while running dsweb-proxy");
 }

@@ -317,14 +317,58 @@
     if (accountsInFlight) return;  // 轮询 + 手动操作并发时，后到的会覆盖先到的渲染
     accountsInFlight = true;
     try {
+      // 服务未运行时走壳直读（账号库是磁盘数据，不该依赖 HTTP 服务）
+      if (!serviceUp && window.__TAURI__) {
+        const lib = JSON.parse(await window.__TAURI__.core.invoke('read_library', { provider: dir() }));
+        renderAccounts({ accounts: lib.accounts || [], groups: lib.groups || [] });
+        return;
+      }
       const [groupData, accountData] = await Promise.all([
         (await fetchT(`${BASE}/admin/groups?provider=${dir()}`)).json(),
         (await fetchT(`${BASE}/admin/accounts?provider=${dir()}`)).json(),
       ]);
-      const byId = Object.fromEntries((accountData.accounts || []).map((a) => [a.id, a]));
-      const groups = groupData.groups || [];
-      const sections = groupData.sections || [];
-      const total = (accountData.accounts || []).length;
+      renderAccounts({ accounts: accountData.accounts || [], groups: groupData.groups || [], sections: groupData.sections });
+    } catch {
+      // 网络路径失败（服务刚停）：退回壳直读，绝不让用户看到空列表
+      if (window.__TAURI__) {
+        try {
+          const lib = JSON.parse(await window.__TAURI__.core.invoke('read_library', { provider: dir() }));
+          renderAccounts({ accounts: lib.accounts || [], groups: lib.groups || [] });
+          return;
+        } catch {}
+      }
+      $('accounts-body').innerHTML = '<div class="muted">账号库读取失败</div>';
+    } finally {
+      accountsInFlight = false;
+    }
+  }
+
+  /** 渲染账号库（数据来源可以是服务端 API，也可以是壳直读）。 */
+  function renderAccounts({ accounts, groups, sections }) {
+    {
+      const byId = Object.fromEntries((accounts || []).map((a) => [a.id, a]));
+      const total = (accounts || []).length;
+      // 壳直读没有 sections：本地按 groupId 分区（与服务端同规则）
+      if (!sections) {
+        const known = new Set((groups || []).map((g) => g.id));
+        const buckets = new Map();
+        const ungrouped = [];
+        for (const a of accounts || []) {
+          const gid = a.groupId && known.has(a.groupId) ? a.groupId : '';
+          if (!gid) { ungrouped.push(a); continue; }
+          if (!buckets.has(gid)) buckets.set(gid, []);
+          buckets.get(gid).push(a);
+        }
+        const activeGid = (accounts || []).find((a) => a.active)?.groupId;
+        const ordered = [...(groups || [])].sort((x, y) => {
+          if (x.id === activeGid) return -1;
+          if (y.id === activeGid) return 1;
+          return (x.order ?? 0) - (y.order ?? 0);
+        });
+        sections = ordered.map((g) => ({ key: g.id, name: g.name, groupId: g.id, accounts: buckets.get(g.id) || [] }));
+        if (ungrouped.length) sections.push({ key: '__ungrouped__', name: '未分组', groupId: null, accounts: ungrouped });
+      }
+      groups = groups || [];
       $('account-count').textContent = total ? `${total} 个账号 · ${groups.length} 个分组` : '（空）';
 
       if (!total && !groups.length) {
@@ -380,10 +424,6 @@
         }
       }
       $('accounts-body').innerHTML = bodyHtml;
-    } catch {
-      $('accounts-body').innerHTML = '<div class="muted">账号库读取失败 —— 服务未运行？点右上角「启动服务」后自动恢复（10 秒轮询）</div>';
-    } finally {
-      accountsInFlight = false;
     }
   }
 
