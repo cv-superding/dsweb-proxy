@@ -176,6 +176,7 @@
   const PROVIDER_NAME = { 'deepseek-web': 'DeepSeek', 'qwen-web': '通义千问', 'doubao-web': '豆包' };
   const dir = () => DIR_BY_PROVIDER[currentProvider];
   let collapsed = JSON.parse(localStorage.getItem('dsweb.collapsed') || '{}');
+  let bootReady = false;  // BASE 确定后再发首帧请求
 
   function fmtRemaining(ms) {
     const hours = Math.floor(ms / 3600000);
@@ -189,10 +190,12 @@
   function log(text) { $('log').textContent = text; }
   // 冷启动时 sidecar 可能还没 listen，无超时的 fetch 会挂在 SYN 重传上（Windows ~21s）
   // —— 这就是「加载中……」卡住的根因。统一 5s 超时，快速失败。
-  function fetchT(path, options = {}) {
-    return fetch(path, { ...options, signal: AbortSignal.timeout(5000) });
+  function fetchT(path, options = {}, overrides = {}) {
+    const timeout = overrides.timeout ?? 5000;
+    return fetch(path, { ...options, signal: AbortSignal.timeout(timeout) });
   }
   let accountsInFlight = false;
+  let loginInFlight = false;
   let serviceUp = false;
   let svcSuppressUntil = 0;
 
@@ -201,16 +204,40 @@
       for (const t of document.querySelectorAll('.tab')) t.classList.remove('on');
       tab.classList.add('on');
       currentProvider = tab.dataset.p;
-      // 页面就绪：先亮窗（消灭启动白屏），再拉数据
-  if (window.__TAURI__) {
-    try { window.__TAURI__.core.invoke('show_window'); } catch {}
-  }
-  refreshAll();
+      // 启动序列：先从壳读真实端口（改过端口的用户首帧才不会全打错地址），
+  // 亮窗，然后才允许轮询发请求。
+  (async () => {
+    if (window.__TAURI__) {
+      try {
+        const boot = JSON.parse(await window.__TAURI__.core.invoke('get_boot_config'));
+        BASE = `http://127.0.0.1:${boot.port}`;
+        serviceUp = boot.sidecarRunning;
+      } catch {}
+      try { window.__TAURI__.core.invoke('show_window'); } catch {}
+    }
+    bootReady = true;
+    refreshAll();
+  })();
     });
   }
 
   async function refreshStatus() {
     let up = false;
+    // 服务已知停止：只做 1s healthz 快探，别让每 10s 的轮询白等 5s 超时
+    if (!serviceUp) {
+      try {
+        await fetchT(BASE + '/healthz', {}, { timeout: 1500 });
+        up = true;
+        refreshStatus();  // 服务回来了，立刻拉完整状态
+        return;
+      } catch { up = false; }
+      $('dot').classList.remove('ok');
+      $('status-text').textContent = '服务未运行 —— 点「启动服务」启动';
+      $('status-detail').textContent = '';
+      serviceUp = false;
+      if (Date.now() > svcSuppressUntil) renderSvcBtn();
+      return;
+    }
     try {
       const data = await (await fetchT(BASE + '/admin/status')).json();
       up = true;
@@ -413,15 +440,26 @@
   });
 
   $('btn-login').addEventListener('click', async () => {
+    if (loginInFlight) { log('登录流程进行中 —— 浏览器窗口里完成或关掉它再点。'); return; }
+    if (!serviceUp) { log('服务未运行 —— 先点「启动服务」。'); return; }
+    loginInFlight = true;
+    const btn = $('btn-login');
+    btn.disabled = true;
     log(`正在拉起浏览器登录${PROVIDER_NAME[currentProvider]}（新账号入库，不影响当前账号）……`);
     try {
-      const res = await (await fetchT(BASE + '/admin/login', {
+      // 登录是长流程（人工输手机号+验证码，可达 5 分钟）：单独放宽超时
+      const res = await (await fetchT(BASE + '/admin/login', { timeout: 360000 }, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider: currentProvider }),
       })).json();
       log(res.message || JSON.stringify(res));
-      setTimeout(refreshAll, 8000);
-    } catch (e) { log('失败：' + e); }
+      setTimeout(refreshAll, 3000);
+    } catch (e) {
+      log('失败：' + (e?.name === 'TimeoutError' ? '登录超时（超过 6 分钟），请重试' : e));
+    } finally {
+      loginInFlight = false;
+      btn.disabled = false;
+    }
   });
 
   $('btn-verify').addEventListener('click', async () => {
@@ -510,13 +548,22 @@
   });
 
   function refreshAll() { loadConfig(); refreshStatus(); refreshModels(); refreshAccounts(); }
-  // 页面就绪：先亮窗（消灭启动白屏），再拉数据
-  if (window.__TAURI__) {
-    try { window.__TAURI__.core.invoke('show_window'); } catch {}
-  }
-  refreshAll();
+  // 启动序列：先从壳读真实端口（改过端口的用户首帧才不会全打错地址），
+  // 亮窗，然后才允许轮询发请求。
+  (async () => {
+    if (window.__TAURI__) {
+      try {
+        const boot = JSON.parse(await window.__TAURI__.core.invoke('get_boot_config'));
+        BASE = `http://127.0.0.1:${boot.port}`;
+        serviceUp = boot.sidecarRunning;
+      } catch {}
+      try { window.__TAURI__.core.invoke('show_window'); } catch {}
+    }
+    bootReady = true;
+    refreshAll();
+  })();
   setInterval(() => {
-    if (document.hidden) return;  // 后台窗口不轮询，回前台立刻刷一轮
+    if (document.hidden || !bootReady) return;  // 后台不轮询；boot 未完成不发请求
     refreshStatus(); refreshAccounts();
   }, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
