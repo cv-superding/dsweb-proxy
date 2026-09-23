@@ -214,8 +214,18 @@ function normalizeRecord(raw: any, fallbackId?: string): AccountRecord | undefin
   }
 }
 
-/** 库里全部账号，按捕获时间倒序（最近捕获的在前）。 */
+/** 库内缓存：控制台 10s 轮询 + 轮转器频繁读取，没必要每请求扫盘。写路径全部失效。 */
+const listCache = new Map<string, { at: number; records: AccountRecord[] }>()
+
+function invalidateListCache(provider?: string): void {
+  if (provider) listCache.delete(provider)
+  else listCache.clear()
+}
+
+/** 库里全部账号，按捕获时间倒序（最近捕获的在前）。1s 进程内缓存。 */
 export function listAccounts(provider: string = 'deepseek'): AccountRecord[] {
+  const cached = listCache.get(provider)
+  if (cached && Date.now() - cached.at < 1000) return cached.records
   let names: string[] = []
   try {
     names = readdirSync(accountsDir(provider)).filter((name) => name.endsWith('.json') && !name.includes('.tmp-'))
@@ -229,6 +239,7 @@ export function listAccounts(provider: string = 'deepseek'): AccountRecord[] {
     if (record) records.push(record)
   }
   records.sort((a, b) => String(b.capturedAt).localeCompare(String(a.capturedAt)))
+  listCache.set(provider, { at: Date.now(), records })
   return records
 }
 
@@ -239,6 +250,7 @@ export function readAccount(id: string, provider: string = 'deepseek'): AccountR
 
 export function saveAccount(record: AccountRecord, provider: string = 'deepseek'): void {
   writeJsonAtomic(accountFilePath(record.id, provider), record)
+  listCache.delete(provider)
 }
 
 export function activeAccountId(provider: string = 'deepseek'): string | undefined {
@@ -294,6 +306,7 @@ export function removeAccount(id: string, provider: string = 'deepseek'): boolea
   } catch {
     return false
   }
+  listCache.delete(provider)
   if (readIndex(provider).activeId === id) clearActiveAccount(provider)
   return true
 }

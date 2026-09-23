@@ -228,8 +228,26 @@ export class DeepseekWebProvider implements WebProxyProvider {
       } as any)
       if (outcome?.auth) {
         const { commitCapturedAuth } = await import('./account-ctx.ts')
-        commitCapturedAuth(outcome.auth as any, ACCOUNT_DIR)
-        return { ok: true, message: `登录成功（${(outcome.auth as any).user?.display ?? '未知账号'}）` }
+        // 校验身份并回填显示名（users/current 只读零额度）——否则账号库里是一串 acc_xxx
+        let display: string | undefined
+        let serverId: string | undefined
+        try {
+          const { validateAuth } = await import('../core/webapi.ts')
+          const verdict = await validateAuth(outcome.auth as any)
+          if (verdict.ok) {
+            display = verdict.user?.display
+            serverId = verdict.user?.id
+          }
+        } catch {}
+        const normalized = commitCapturedAuth(
+          {
+            ...(outcome.auth as any),
+            ...(display ? { user: { display } } : {}),
+            ...(serverId ? { serverId } : {}),
+          } as any,
+          ACCOUNT_DIR,
+        )
+        return { ok: true, message: `登录成功（${display ?? String((normalized as any).id ?? '')}）` }
       }
       return { ok: false, message: String((outcome as any)?.error ?? '登录未完成（窗口被关闭或超时）') }
     } catch (error: any) {
