@@ -118,9 +118,21 @@ async function route(req: IncomingMessage, res: ServerResponse, config: ProxyCon
     sendJson(res, 200, { ok: true, enabled: live.enabled !== false, port: config.port })
     return
   }
-  if (!authorize(req, live)) {
+  // apiKey 门禁只保护 /v1/*（给外部客户端用）。/admin/* 是控制台自己的管理面：
+  // 要求它带 key 会把用户锁在门外（实测 apiKey 一设，账号库/状态全 401 → 界面显示"没了"）。
+  // 管理面仍限制**仅本机**访问，配合 host=127.0.0.1 的双重约束。
+  const isAdmin = path.startsWith('/admin/')
+  if (!isAdmin && !authorize(req, live)) {
     sendJson(res, 401, errorPayload('无效的 API key（控制台「服务设置」里配置）', 'UNAUTHORIZED', 401))
     return
+  }
+  if (isAdmin) {
+    const remote = req.socket.remoteAddress ?? ''
+    const local = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1'
+    if (!local) {
+      sendJson(res, 403, errorPayload('管理面仅限本机访问', 'FORBIDDEN', 403))
+      return
+    }
   }
 
   // ── 管理面 ──
