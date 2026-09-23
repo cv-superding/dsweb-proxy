@@ -245,9 +245,16 @@ async function route(req: IncomingMessage, res: ServerResponse, config: ProxyCon
     if (typeof body.rotation === 'boolean') next.rotation = body.rotation
     if (typeof body.apiKey === 'string') {
       const key = body.apiKey.trim()
-      // 空串 = 清除门禁；掩码值 = 用户没改动，保持原样
-      if (key === '' ) delete next.apiKey
-      else if (!key.startsWith('****')) next.apiKey = key
+      // 空串 = 清除门禁；掩码值 = 用户没改动，保持原样。
+      // ⚠️ 含 '*' 的一律拒绝：掩码被误编辑后（如 '****111'）绝不能当真 key 存进去——
+      // 实测曾把 '1111' 截成 '111'，用户看到的是"保存后 key 变了"。
+      if (key === '') {
+        delete next.apiKey
+      } else if (key.includes('*')) {
+        // 视为「未修改」，保留磁盘原值（不报错，避免打断用户操作）
+      } else {
+        next.apiKey = key
+      }
     }
     if (body.port !== undefined) {
       const port = Number(body.port)
